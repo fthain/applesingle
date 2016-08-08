@@ -3,12 +3,15 @@
 applesingle.c - command line utility for manipulating AppleSingle and
                 AppleDouble files on Mac OS X.
 
-Build cmd: gcc -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
+Build cmd for Mac OS 10.4:
+  gcc -DHAVE_DESKTOP_MANAGER -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
+Build cmd for later releases (e.g. with openssl installed under /usr/local):
+  cc -m32 -Wno-deprecated-declarations -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
 
-Copyright (c) 2006, 2009, 2011 Finn Thain
+Copyright (c) 2006, 2009, 2011, 2016 Finn Thain
 fthain@telegraphics.com.au
 
-Portions copyright (c) 1992-2002 Apple Computer, Inc.
+Portions of Desktop Manager support code copyright (c) 1992-2002 Apple Computer, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -47,6 +50,8 @@ Notes:
   eventually get a "-r" option for this. Or perhaps a better approach would
   be instead to extend pax itself (like hfspax).
 * The format doesn't accomodate directories, but could probably be extended.
+* Apple now ships their own "applesingle" command, which means this one should
+  be renamed.
 
 2006-06-19 First cut.
 2009-09-01 Clean up code style. Rewrite help text. Rework argument parsing and
@@ -55,6 +60,7 @@ Notes:
 2011-04-01 Clean up some error messages. Fix AppleDouble rsrc padding bug. Also
            improve -v option behaviour. Simplify filename seperator output.
 2011-04-03 Fix data fork too big error for AppleSingle encoding.
+2016-08-08 Add HAVE_DESKTOP_MANAGER macro to fix build on recent OS releases.
 */
 
 
@@ -187,6 +193,8 @@ int utcdatetime_to_AS(UTCDateTime *utcdt)
 	return (long long)t - 3029490000LL;
 }
 
+
+#ifdef HAVE_DESKTOP_MANAGER /* Not available in 64-bit Carbon (Leopard etc.) */
 
 /* Routines to extract the Finder comment.
  * Adapted from Apple's MoreDesktopMgr.c sample.
@@ -330,6 +338,8 @@ OSErr DTGetComment(short vRefNum, long dirID, Str255 name, Str255 comment, short
 
 	return error;
 }
+
+#endif /* HAVE_DESKTOP_MANAGER */
 
 
 /* A routine to output a given fork. */
@@ -508,6 +518,7 @@ OSErr encode_file(char *filename, int format, short include_comment,
 		    "%s: Data fork too big for AppleSingle format", filename);
 
 	char *comment = NULL;
+#ifdef HAVE_DESKTOP_MANAGER
 	if (include_comment) {
 		if ((comment = malloc(256)) == NULL)
 			return posix_error(errno, "malloc");
@@ -522,6 +533,7 @@ OSErr encode_file(char *filename, int format, short include_comment,
 			return err;
 		}
 	}
+#endif
 
 	asEntryDesc des[9];
 
@@ -1128,7 +1140,11 @@ int main(int argc, char * argv[])
 		case 'o':
 			while ((my_optarg = parse_kv_pairs(my_optarg, &key, &value))) {
 				if (!strcmp(key, "finder_comment"))
+#ifdef HAVE_DESKTOP_MANAGER
 					include_comment = atoi(value);
+#else
+					fprintf(stderr, "finder_comment option is unavailable.\n");
+#endif
 				else if (!strcmp(key, "posix_name"))
 					include_posixname = atoi(value);
 				else if (!strcmp(key, "appledouble") && atoi(value))
@@ -1173,7 +1189,8 @@ int main(int argc, char * argv[])
 "Usage: %s -w [-o name[=value],...] filename...\n"
 "    Dump to STDOUT the encoded representation of the given file(s).\n"
 "    -o   Set options that infulence the encoding, i.e.\n"
-"         finder_comment : include the Finder comment entry.\n"
+"         finder_comment : include the Finder comment entry. Requires the\n"
+"                          Desktop Manager API (Mac OS 10.4 and earlier).\n"
 "         posix_name     : include POSIX filename entry.\n"
 "         appledouble    : instead of AppleSingle, dump the non-data half\n"
 "                          of the AppleDouble representation.\n"
