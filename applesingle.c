@@ -987,7 +987,7 @@ int output_sep(char sep)
 
 /* Routine to decode an AppleDouble or AppleSingle stream. */
 
-int decode_file(FILE *f, int verbose, char sep)
+int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 {
 	int err = 0;
 	asHdr h;
@@ -1010,7 +1010,7 @@ int decode_file(FILE *f, int verbose, char sep)
 	if (magic != kAppleDoubleMagic && magic != kAppleSingleMagic)
 		return posix_error(EPROTO, "bad magic number");
 
-	if (verbose)
+	if (list_only && verbose)
 		printf("Headr: magic 0x%08lx, version %08lx, entries %u\n",
 		       magic, version, entries);
 
@@ -1027,7 +1027,7 @@ int decode_file(FILE *f, int verbose, char sep)
 			goto out1;
 		} else if (posix_error(err = ferror(f), "fread"))
 			goto out1;
-		if (verbose)
+		if (list_only && verbose)
 			printf("Descr: entry id %10lu, offset %10lu, length %10lu\n",
 			       be32toh(d->entry_id), be32toh(d->offset),
 			       be32toh(d->length));
@@ -1058,12 +1058,16 @@ int decode_file(FILE *f, int verbose, char sep)
 			UInt32 entry_id = be32toh(d->entry_id);
 			UInt32 length = be32toh(d->length);
 
-			if (verbose) {
-				printf("Entry: position %llu, ", pos);
-				output_entry_id(entry_id);
+			if (entry_id == AS_POSIX_NAME)
+				saw_posix_name = entries - n;
+
+			if (list_only) {
+				if (verbose) {
+					printf("Entry: position %llu, ", pos);
+					output_entry_id(entry_id);
+				}
 				switch (entry_id) {
 				case AS_POSIX_NAME:
-				case AS_NAME:
 					if (verbose > 1) {
 						err = output_hex(f, length);
 					} else {
@@ -1074,31 +1078,29 @@ int decode_file(FILE *f, int verbose, char sep)
 					break;
 				case AS_DATA:
 				case AS_RESOURCE:
-					if (verbose > 2)
+					if (verbose == 1) {
+						err = output_digest(f, buf, WRITE_BUFFER_SIZE, length);
+						break;
+					}
+				default:
+					if (verbose)
 						err = output_hex(f, length);
 					else
-						err = output_digest(f, buf, WRITE_BUFFER_SIZE, length);
-					break;
-				default:
-					err = output_hex(f, length);
+						err = discard(f, buf, WRITE_BUFFER_SIZE, length);
 				}
-			} else {
-				if (entry_id == AS_POSIX_NAME) {
-					err = output_raw(f, buf, WRITE_BUFFER_SIZE, length);
-					if (err) goto out2;
-					err = output_sep(sep);
-					saw_posix_name = entries - n;
-				} else {
-					err = discard(f, buf, WRITE_BUFFER_SIZE, length);
-				}
-			}
+			} else if (entry_id == id) {
+				err = output_raw(f, buf, WRITE_BUFFER_SIZE, length);
+				if (err) goto out2;
+			} else
+				err = discard(f, buf, WRITE_BUFFER_SIZE, length);
+
 			if (err) goto out2;
 			pos += length;
 			d++;
 			n--;
 		} else {
 			UInt32 gap = offset - pos;
-			if (verbose)
+			if (list_only && verbose)
 				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
 			if (err) goto out2;
@@ -1163,12 +1165,14 @@ int main(int argc, char * argv[])
 	int include_posixname = 0;
 	int quash_atime = 0;
 	int encode = 0;
+	int list_only = 1;
+	UInt32 id = AS_DATA;
 	int verbose = 0;
 	int null_sep = 0;
 	int flag, usage = 0;
 	char * me = argv[0];
 
-	while ((flag = getopt(argc, argv, "0o:vw")) != -1) {
+	while ((flag = getopt(argc, argv, "0e:o:rvw")) != -1) {
 		char *key, *value;
 		char *my_optarg = optarg;
 
@@ -1201,6 +1205,12 @@ int main(int argc, char * argv[])
 			encode = 1;
 			break;
 #endif
+		case 'r':
+			list_only = 0;
+			break;
+		case 'e':
+			id = atoi(optarg);
+			break;
 		default:
 			usage = 1;
 		}
@@ -1233,6 +1243,10 @@ int main(int argc, char * argv[])
 "    -v   Dump the other entries as well. Add more -v options to see more\n"
 "         entries in hexadecimal.\n"
 "\n"
+"Usage: %s -r [-e entry-id]\n"
+"    Extract a given entry from the file(s) encoded on STDIN.\n"
+"    -e   ID of entry: 1 for data fork (default), 2 for rsrc fork, etc.\n"
+"\n"
 #ifdef ENABLE_ENCODING
 "Usage: %s -w [-o name[=value],...] filename...\n"
 "    Dump to STDOUT the encoded representation of the given file(s).\n"
@@ -1256,7 +1270,7 @@ int main(int argc, char * argv[])
 "Encoding of files is not supported on this platform.\n"
 "\n"
 #endif
-, me, me, me, me);
+, me, me, me, me, me);
 		rc = 3;
 	} else {
 		rc = 0;
@@ -1315,7 +1329,7 @@ int main(int argc, char * argv[])
 		{
 			int err;
 			do {
-				err = decode_file(stdin, verbose, null_sep ? '\0' : '\n');
+				err = decode_file(stdin, list_only, id, verbose, null_sep ? '\0' : '\n');
 				report_and_reset_error("stdin");
 				if (feof(stdin))
 					break;
