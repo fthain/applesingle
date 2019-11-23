@@ -1,14 +1,16 @@
 /*
 
 applesingle.c - command line utility for manipulating AppleSingle and
-                AppleDouble files on Mac OS X.
+                AppleDouble files.
 
 Build cmd for Mac OS 10.4:
   gcc -DHAVE_DESKTOP_MANAGER -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
 Build cmd for later releases (e.g. with openssl installed under /usr/local):
   cc -m32 -Wno-deprecated-declarations -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
+Build cmd for Linux/x86:
+  cc -O2 -lcrypto applesingle.c -o applesingle
 
-Copyright (c) 2006, 2009, 2011, 2016 Finn Thain
+Copyright (c) 2006, 2009, 2011, 2016, 2019 Finn Thain
 fthain@telegraphics.com.au
 
 Portions of Desktop Manager support code copyright (c) 1992-2002 Apple Computer, Inc.
@@ -61,6 +63,7 @@ Notes:
            improve -v option behaviour. Simplify filename seperator output.
 2011-04-03 Fix data fork too big error for AppleSingle encoding.
 2016-08-08 Add HAVE_DESKTOP_MANAGER macro to fix build on recent OS releases.
+2019-11-23 Add support for non-Mac (e.g. Linux) hosts.
 */
 
 
@@ -71,8 +74,24 @@ Notes:
 #include <sys/stat.h>
 #include <stdint.h>
 #include <dirent.h>
-#include <Carbon/Carbon.h>
 #include <openssl/md5.h>
+
+#ifdef __MACOSX__
+#include <Carbon/Carbon.h>
+#define ENABLE_ENCODING
+#define EPROTO EFTYPE
+#else
+#include <stdlib.h>
+#include <string.h>
+typedef int8_t SInt8;
+typedef int16_t SInt16;
+typedef int32_t SInt32;
+typedef int64_t SInt64;
+typedef uint8_t UInt8;
+typedef uint16_t UInt16;
+typedef uint32_t UInt32;
+typedef uint64_t UInt64;
+#endif
 
 
 /* AppleSingle file header and AppleDouble "header file" header. */
@@ -134,15 +153,6 @@ enum { kASMacInfoLocked = 0x01, kASMacInfoProtected = 0x02 };
 char *err_msg = NULL;
 char err_msg_buf[255];
 
-inline OSErr carbon_error(OSErr e, char *m)
-{
-	if (e == 0)
-		return 0;
-	snprintf(err_msg_buf, sizeof(err_msg_buf), "%s: error %d", m, e);
-	err_msg = err_msg_buf;
-	return e;
-}
-
 inline int posix_error3(int e, char *fmt, char *m)
 {
 	if (e == 0)
@@ -165,10 +175,16 @@ void report_and_reset_error(char *m)
 	}
 }
 
+#ifdef ENABLE_ENCODING
 
-/* I/O buffer size. */
-#define BUFFER_SIZE (32 * 1024)
-
+inline OSErr carbon_error(OSErr e, char *m)
+{
+	if (e == 0)
+		return 0;
+	snprintf(err_msg_buf, sizeof(err_msg_buf), "%s: error %d", m, e);
+	err_msg = err_msg_buf;
+	return e;
+}
 
 /* A routine to figure out whether the HFS unsigned 48-bit seconds-since-1904
  * quantity fits in the AppleSingle/Double signed 32-bit seconds-since-2000
@@ -342,6 +358,8 @@ OSErr DTGetComment(short vRefNum, long dirID, Str255 name, Str255 comment, short
 #endif /* HAVE_DESKTOP_MANAGER */
 
 
+#define READ_BUFFER_SIZE (32 * 1024)
+
 /* A routine to output a given fork. */
 
 OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
@@ -351,7 +369,7 @@ OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
 	                       fsRdPerm, &forkRefNum);
 	if (carbon_error(err, "FSOpenFork")) return err;
 
-	char *buf = malloc(BUFFER_SIZE);
+	char *buf = malloc(READ_BUFFER_SIZE);
 	if (!buf) {
 		posix_error(err = errno, "malloc");
 		FSCloseFork(forkRefNum);
@@ -362,7 +380,7 @@ OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
 	do {
 		ByteCount n = 0;
 		read_err = FSReadFork(forkRefNum, fsAtMark | noCacheMask, 0,
-		                      BUFFER_SIZE, buf, &n);
+		                      READ_BUFFER_SIZE, buf, &n);
 		*pos += fwrite(buf, 1, n, stdout);
 		if (posix_error(err = ferror(stdout), "fwrite"))
 			break;
@@ -625,7 +643,7 @@ OSErr encode_file(char *filename, int format, short include_comment,
 		if (pos != (unsigned long long)cur_des->offset) {
 //			fprintf(stderr, "pos %llu offset %lu\n", pos, (unsigned long)cur_des->offset); 
 			fprintf(stderr, "Bad position/offset in encode_file()!\n");
-			err = EFTYPE;
+			err = EIO;
 			goto out;
 		}
 
@@ -676,11 +694,11 @@ OSErr encode_file(char *filename, int format, short include_comment,
 	if (pos != final_pos) {
 //		fprintf(stderr, "pos %llu final_pos %llu\n", pos, final_pos);
 		fprintf(stderr, "Bad position/final position in encode_file()!\n");
-		err = EFTYPE;
+		err = EIO;
 		goto out;
 	}
 
-	err = noErr;
+	err = 0;
 
 out:
 	if (comment)
@@ -753,6 +771,8 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
 	} while (1);
 }
 
+#endif // ENABLE_ENCODING
+
 
 /* Qsort comparison routine for sorting descriptors by offset. */
 
@@ -778,7 +798,7 @@ int compare_desc_offset(const void * a, const void * b)
 #define HEX_BUFFER_SIZE  (LINES_PER_BUFFER * HEX_LINE_CHARS)
 #define BIN_BUFFER_SIZE  (LINES_PER_BUFFER * BIN_LINE_BYTES)
 
-OSErr output_hex(FILE *f, size_t n)
+int output_hex(FILE *f, size_t n)
 {
 	char digits[] = "0123456789abcdef";
 	unsigned char *bin_buf = malloc(BIN_BUFFER_SIZE);
@@ -792,13 +812,13 @@ OSErr output_hex(FILE *f, size_t n)
 		free(bin_buf);
 		return errno;
 	}
-	OSErr err = noErr;
+	int err = 0;
 	do {
 		size_t bin_chunk = n > BIN_BUFFER_SIZE ? BIN_BUFFER_SIZE : n;
 		size_t i = fread(bin_buf, 1, bin_chunk, f);
 		if (i < bin_chunk) {
 			if (feof(f)) {
-				err = eofErr;
+				err = EPROTO;
 				bin_chunk = i;
 			} else {
 				posix_error(err = ferror(f), "fread");
@@ -831,7 +851,7 @@ OSErr output_hex(FILE *f, size_t n)
 		if (!fwrite(hex_buf, hex_chunk, 1, stdout))
 			posix_error(err = ferror(stdout), "fwrite");
 		n -= i;
-	} while (err == noErr && n > 0);
+	} while (err == 0 && n > 0);
 out:
 	free(hex_buf);
 	free(bin_buf);
@@ -852,7 +872,7 @@ int output_raw(FILE *f, char *buf, unsigned buf_sz, size_t n)
 			return posix_error(ferror(stdout), "fwrite");
 		if (r < chunk) {
 			if (feof(f))
-				return posix_error(EFTYPE, "unexpected EOF");
+				return posix_error(EPROTO, "unexpected EOF");
 			int read_error = ferror(f);
 			if (posix_error(read_error, "fread"))
 				return read_error;
@@ -876,7 +896,7 @@ int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 		size_t r = fread(buf, 1, chunk, f);
 		if (r < chunk) {
 			if (feof(f))
-				return posix_error(EFTYPE, "unexpected EOF");
+				return posix_error(EPROTO, "unexpected EOF");
 			int read_error = ferror(f);
 			if (posix_error(read_error, "fread"))
 				return read_error;
@@ -900,7 +920,7 @@ int discard(FILE *f, char *buf, unsigned buf_sz, size_t n)
 		size_t r = fread(buf, 1, chunk, f);
 		if (r < chunk) {
 			if (feof(f))
-				return posix_error(EFTYPE, "unexpected EOF");
+				return posix_error(EPROTO, "unexpected EOF");
 			int read_error = ferror(f);
 			if (posix_error(read_error, "fread"))
 				return read_error;
@@ -956,9 +976,11 @@ int output_sep(char sep)
 }
 
 
+#define WRITE_BUFFER_SIZE (32 * 1024)
+
 /* Routine to decode an AppleDouble or AppleSingle stream. */
 
-OSErr decode_file(FILE *f, int verbose, char sep)
+int decode_file(FILE *f, int verbose, char sep)
 {
 	int err = 0;
 	asHdr h;
@@ -967,15 +989,15 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 	if (pos != sizeof(h)) {
 		if (feof(f)) {
 			if (!pos)
-				return eofErr;
-			posix_error(err = EFTYPE, "short read from header");
+				return 0;
+			posix_error(err = EPROTO, "short read from header");
 		} else
 			posix_error(err = ferror(f), "failed to read header");
 		return err;
 	}
 
 	if (h.magic != kAppleDoubleMagic && h.magic != kAppleSingleMagic)
-		return posix_error(EFTYPE, "bad magic number");
+		return posix_error(EPROTO, "bad magic number");
 
 	if (verbose)
 		printf("Headr: magic 0x%08lx, version %08lx, entries %u\n",
@@ -990,7 +1012,7 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 	while (n) {
 		pos += fread(d, 1, sizeof(*d), f);
 		if (feof(f)) {
-			carbon_error(err = eofErr, "unexpected EOF");
+			posix_error(err = EPROTO, "unexpected EOF");
 			goto out1;
 		} else if (posix_error(err = ferror(f), "fread"))
 			goto out1;
@@ -1004,7 +1026,7 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 	/* According to the spec, entries can appear in any order. */
 	qsort(descriptors, h.entries, sizeof(asEntryDesc), compare_desc_offset);
 
-	char *buf = malloc(BUFFER_SIZE);
+	char *buf = malloc(WRITE_BUFFER_SIZE);
 	if (buf == NULL) {
 		posix_error(err = errno, "malloc");
 		goto out1;
@@ -1028,7 +1050,7 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 					if (verbose > 1) {
 						err = output_hex(f, d->length);
 					} else {
-						err = output_raw(f, buf, BUFFER_SIZE, d->length);
+						err = output_raw(f, buf, WRITE_BUFFER_SIZE, d->length);
 						if (err) goto out2;
 						err = output_sep(sep);
 					}
@@ -1038,19 +1060,19 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 					if (verbose > 2)
 						err = output_hex(f, d->length);
 					else
-						err = output_digest(f, buf, BUFFER_SIZE, d->length);
+						err = output_digest(f, buf, WRITE_BUFFER_SIZE, d->length);
 					break;
 				default:
 					err = output_hex(f, d->length);
 				}
 			} else {
 				if (d->entry_id == AS_POSIX_NAME) {
-					err = output_raw(f, buf, BUFFER_SIZE, d->length);
+					err = output_raw(f, buf, WRITE_BUFFER_SIZE, d->length);
 					if (err) goto out2;
 					err = output_sep(sep);
 					saw_posix_name = h.entries - n;
 				} else {
-					err = discard(f, buf, BUFFER_SIZE, d->length);
+					err = discard(f, buf, WRITE_BUFFER_SIZE, d->length);
 				}
 			}
 			if (err) goto out2;
@@ -1061,7 +1083,7 @@ OSErr decode_file(FILE *f, int verbose, char sep)
 			UInt32 gap = d->offset - pos;
 			if (verbose)
 				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
-			err = discard(f, buf, BUFFER_SIZE, gap);
+			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
 			if (err) goto out2;
 			pos += gap;
 		}
@@ -1157,9 +1179,11 @@ int main(int argc, char * argv[])
 		case 'v':
 			verbose++;
 			break;
+#ifdef ENABLE_ENCODING
 		case 'w':
 			encode = 1;
 			break;
+#endif
 		default:
 			usage = 1;
 		}
@@ -1186,6 +1210,13 @@ int main(int argc, char * argv[])
 "Usage: %s -h\n"
 "    Print this message.\n"
 "\n"
+"Usage: %s [-v] [-0]\n"
+"    List the POSIX name entry (if any) from the file(s) encoded on STDIN.\n"
+"    -0   Write names seperated by null characters instead of newline.\n"
+"    -v   Dump the other entries as well. Add more -v options to see more\n"
+"         entries in hexadecimal.\n"
+"\n"
+#ifdef ENABLE_ENCODING
 "Usage: %s -w [-o name[=value],...] filename...\n"
 "    Dump to STDOUT the encoded representation of the given file(s).\n"
 "    -o   Set options that infulence the encoding, i.e.\n"
@@ -1200,20 +1231,19 @@ int main(int argc, char * argv[])
 "    Dump to STDOUT the encoded representation of the file(s) named on STDIN.\n"
 "    -0   Read names seperated by null characters instead of newline.\n"
 "\n"
-"Usage: %s [-v] [-0]\n"
-"    List the POSIX name entry (if any) of the file(s) encoded on STDIN.\n"
-"    -v   Dump the other entries as well. Add more -v options to see more\n"
-"         entries in hexadecimal.\n"
-"    -0   Write names seperated by null characters instead of newline.\n"
-"\n"
 "Note: concatenating multiple AppleSingle files as a stream is a non-standard\n"
 "extension to the format as is the POSIX filename entry. They may or may not\n"
 "cause other tools to explode. For more information, refer to \"AppleSingle/\n"
-"AppleDouble Formats for Foreign Files Developer's Note\", Apple 1990.\n",
-me, me, me, me);
+"AppleDouble Formats for Foreign Files Developer's Note\", Apple 1990.\n"
+#else
+"Encoding of files is not supported on this platform.\n"
+"\n"
+#endif
+, me, me, me, me);
 		rc = 3;
 	} else {
 		rc = 0;
+#ifdef ENABLE_ENCODING
 		if (encode) {
 			struct stat stats;
 			if (isatty(fileno(stdout))) {
@@ -1263,14 +1293,17 @@ me, me, me, me);
 				}
 				if (buf) free(buf);
 			}
-		} else {
-			OSErr err;
+		} else
+#endif // ENABLE_ENCODING
+		{
+			int err;
 			do {
 				err = decode_file(stdin, verbose, null_sep ? '\0' : '\n');
 				report_and_reset_error("stdin");
-				if (err == eofErr) break;
-			} while (err == noErr);
-			rc = err != eofErr;
+				if (feof(stdin))
+					break;
+			} while (err == 0);
+			rc = err != 0;
 		}
 	}
 
