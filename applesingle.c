@@ -456,11 +456,11 @@ int dump_mac_info(UInt64 *pos, FSCatalogInfo *ci)
 int dump_file_dates(UInt64 *pos, FSCatalogInfo *ci, short quash_atime)
 {
 	asDatesEntry e;
-	e.creation = utcdatetime_to_AS(&ci->createDate);
-	e.modification = utcdatetime_to_AS(&ci->contentModDate);
-	e.backup = utcdatetime_to_AS(&ci->backupDate);
-	e.access = utcdatetime_to_AS(quash_atime ?
-	                             &ci->contentModDate : &ci->accessDate);
+	e.creation = htobe32(utcdatetime_to_AS(&ci->createDate));
+	e.modification = htobe32(utcdatetime_to_AS(&ci->contentModDate));
+	e.backup = htobe32(utcdatetime_to_AS(&ci->backupDate));
+	e.access = htobe32(utcdatetime_to_AS(quash_atime ?
+	                                     &ci->contentModDate : &ci->accessDate));
 	*pos += fwrite(&e, 1, sizeof(e), stdout);
 	return posix_error(ferror(stdout), "fwrite");
 }
@@ -480,13 +480,17 @@ int dump_file_info(UInt64 *pos, FSCatalogInfo *ci)
 
 /* Output a descriptor. */
 
-int dump_descriptors(UInt64 *pos, asEntryDesc *d)
+int dump_descriptors(UInt64 *pos, asEntryDesc *p)
 {
-	while (d->entry_id) {
-		*pos += fwrite(d, 1, sizeof(*d), stdout);
+	while (p->entry_id) {
+		asEntryDesc d;
+		d.entry_id = htobe32(p.entry_id);
+		d.offset = htobe32(p.offset);
+		d.length = htobe32(p.length);
+		*pos += fwrite(&d, 1, sizeof(d), stdout);
 		int err = ferror(stdout);
 		if (posix_error(err, "fwrite")) return err;
-		d++;
+		p++;
 	}
 	return 0;
 }
@@ -497,9 +501,9 @@ int dump_descriptors(UInt64 *pos, asEntryDesc *d)
 int dump_header(UInt64 *pos, int format, short entries)
 {
 	asHdr h;
-	h.magic = format;
-	h.version = AS_VERSION;
-	h.entries = entries;
+	h.magic = htobe32(format);
+	h.version = htobe32(AS_VERSION);
+	h.entries = htobe16(entries);
 	bzero(&h.filler, sizeof(h.filler));
 	*pos += fwrite(&h, 1, sizeof(h), stdout);
 	return posix_error(ferror(stdout), "fwrite");
@@ -778,9 +782,12 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
 
 int compare_desc_offset(const void * a, const void * b)
 {
-	if (((asEntryDesc*)a)->offset < ((asEntryDesc*)b)->offset)
+	UInt32 ao = be32toh(((asEntryDesc*)a)->offset);
+	UInt32 bo = be32toh(((asEntryDesc*)b)->offset);
+
+	if (ao < bo)
 		return -1;
-	else if (((asEntryDesc*)a)->offset > ((asEntryDesc*)b)->offset)
+	else if (ao > bo)
 		return 1;
 	else return 0;
 }
@@ -996,19 +1003,23 @@ int decode_file(FILE *f, int verbose, char sep)
 		return err;
 	}
 
-	if (h.magic != kAppleDoubleMagic && h.magic != kAppleSingleMagic)
+	UInt32 magic = be32toh(h.magic);
+	UInt32 version = be32toh(h.version);
+	UInt32 entries = be16toh(h.entries);
+
+	if (magic != kAppleDoubleMagic && magic != kAppleSingleMagic)
 		return posix_error(EPROTO, "bad magic number");
 
 	if (verbose)
 		printf("Headr: magic 0x%08lx, version %08lx, entries %u\n",
-		       h.magic, h.version, h.entries);
+		       magic, version, entries);
 
 	asEntryDesc *descriptors, *d;
-	d = descriptors = malloc(h.entries * sizeof(asEntryDesc));
+	d = descriptors = malloc(entries * sizeof(asEntryDesc));
 	if (descriptors == NULL)
 		return posix_error(errno, "malloc");
 
-	UInt16 n = h.entries;
+	UInt16 n = entries;
 	while (n) {
 		pos += fread(d, 1, sizeof(*d), f);
 		if (feof(f)) {
@@ -1018,13 +1029,14 @@ int decode_file(FILE *f, int verbose, char sep)
 			goto out1;
 		if (verbose)
 			printf("Descr: entry id %10lu, offset %10lu, length %10lu\n",
-			       d->entry_id, d->offset, d->length);
+			       be32toh(d->entry_id), be32toh(d->offset),
+			       be32toh(d->length));
 		d++;
 		n--;
 	}
 
 	/* According to the spec, entries can appear in any order. */
-	qsort(descriptors, h.entries, sizeof(asEntryDesc), compare_desc_offset);
+	qsort(descriptors, entries, sizeof(asEntryDesc), compare_desc_offset);
 
 	char *buf = malloc(WRITE_BUFFER_SIZE);
 	if (buf == NULL) {
@@ -1033,24 +1045,29 @@ int decode_file(FILE *f, int verbose, char sep)
 	}
 
 	int saw_posix_name = -1;
-	n = h.entries;
+	n = entries;
 	d = descriptors;
 	while (n) {
-		if (pos > (unsigned long long)d->offset) {
-			fprintf(stderr, "Bad descriptor offset %u at %llu\n", (unsigned)d->offset, pos);
+		UInt32 offset = be32toh(d->offset);
+
+		if (pos > (long long unsigned)offset) {
+			fprintf(stderr, "Bad descriptor offset %u at %llu\n", (unsigned)offset, pos);
 			d++;
 			n--;
-		} else if (pos == (unsigned long long)d->offset) {
+		} else if (pos == (long long unsigned)offset) {
+			UInt32 entry_id = be32toh(d->entry_id);
+			UInt32 length = be32toh(d->length);
+
 			if (verbose) {
 				printf("Entry: position %llu, ", pos);
-				output_entry_id(d->entry_id);
-				switch (d->entry_id) {
+				output_entry_id(entry_id);
+				switch (entry_id) {
 				case AS_POSIX_NAME:
 				case AS_NAME:
 					if (verbose > 1) {
-						err = output_hex(f, d->length);
+						err = output_hex(f, length);
 					} else {
-						err = output_raw(f, buf, WRITE_BUFFER_SIZE, d->length);
+						err = output_raw(f, buf, WRITE_BUFFER_SIZE, length);
 						if (err) goto out2;
 						err = output_sep(sep);
 					}
@@ -1058,29 +1075,29 @@ int decode_file(FILE *f, int verbose, char sep)
 				case AS_DATA:
 				case AS_RESOURCE:
 					if (verbose > 2)
-						err = output_hex(f, d->length);
+						err = output_hex(f, length);
 					else
-						err = output_digest(f, buf, WRITE_BUFFER_SIZE, d->length);
+						err = output_digest(f, buf, WRITE_BUFFER_SIZE, length);
 					break;
 				default:
-					err = output_hex(f, d->length);
+					err = output_hex(f, length);
 				}
 			} else {
-				if (d->entry_id == AS_POSIX_NAME) {
-					err = output_raw(f, buf, WRITE_BUFFER_SIZE, d->length);
+				if (entry_id == AS_POSIX_NAME) {
+					err = output_raw(f, buf, WRITE_BUFFER_SIZE, length);
 					if (err) goto out2;
 					err = output_sep(sep);
-					saw_posix_name = h.entries - n;
+					saw_posix_name = entries - n;
 				} else {
-					err = discard(f, buf, WRITE_BUFFER_SIZE, d->length);
+					err = discard(f, buf, WRITE_BUFFER_SIZE, length);
 				}
 			}
 			if (err) goto out2;
-			pos += d->length;
+			pos += length;
 			d++;
 			n--;
 		} else {
-			UInt32 gap = d->offset - pos;
+			UInt32 gap = offset - pos;
 			if (verbose)
 				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
