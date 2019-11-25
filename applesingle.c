@@ -1010,8 +1010,8 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 	if (magic != kAppleDoubleMagic && magic != kAppleSingleMagic)
 		return posix_error(EPROTO, "bad magic number");
 
-	if (list_only && verbose)
-		printf("Headr: magic 0x%08lx, version %08lx, entries %u\n",
+	if (list_only && verbose > 0)
+		printf("Headr: magic 0x%08x, version %08x, entries %u\n",
 		       magic, version, entries);
 
 	asEntryDesc *descriptors, *d;
@@ -1027,8 +1027,8 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 			goto out1;
 		} else if (posix_error(err = ferror(f), "fread"))
 			goto out1;
-		if (list_only && verbose)
-			printf("Descr: entry id %10lu, offset %10lu, length %10lu\n",
+		if (list_only && verbose > 0)
+			printf("Descr: entry id %10u, offset %10u, length %10u\n",
 			       be32toh(d->entry_id), be32toh(d->offset),
 			       be32toh(d->length));
 		d++;
@@ -1062,7 +1062,7 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 				saw_posix_name = entries - n;
 
 			if (list_only) {
-				if (verbose) {
+				if (verbose > 0) {
 					printf("Entry: position %llu, ", pos);
 					output_entry_id(entry_id);
 				}
@@ -1083,7 +1083,7 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 						break;
 					}
 				default:
-					if (verbose)
+					if (verbose > 0)
 						err = output_hex(f, length);
 					else
 						err = discard(f, buf, WRITE_BUFFER_SIZE, length);
@@ -1100,7 +1100,7 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 			n--;
 		} else {
 			UInt32 gap = offset - pos;
-			if (list_only && verbose)
+			if (list_only && verbose > 0)
 				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
 			if (err) goto out2;
@@ -1108,11 +1108,14 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 		}
 	}
 
-	if (!verbose) {
-		if (saw_posix_name == -1)
-			fprintf(stderr, "No POSIX name entry\n");
-		else if (saw_posix_name)
-			fprintf(stderr, "POSIX name was not the first entry\n");
+	switch (saw_posix_name) {
+	case 0:
+		break;
+	case -1:
+		fprintf(stderr, "No POSIX name entry (position %llu)\n", pos);
+		break;
+	default:
+		fprintf(stderr, "POSIX name was not the first entry (position %llu)\n", pos);
 	}
 
 out2:
