@@ -444,8 +444,8 @@ int dump_name(UInt64 *pos, FSSpec *s)
 int dump_mac_info(UInt64 *pos, FSCatalogInfo *ci)
 {
 	asMacInfoEntry e = 0;
-	e |= ci->nodeFlags & kFSNodeLockedMask ? kASMacInfoLocked : 0;
-	e |= ci->nodeFlags & kFSNodeCopyProtectMask ? kASMacInfoProtected : 0;
+	e |= (ci->nodeFlags & kFSNodeLockedMask) ? kASMacInfoLocked : 0;
+	e |= (ci->nodeFlags & kFSNodeCopyProtectMask) ? kASMacInfoProtected : 0;
 	*pos += fwrite(&e, 1, sizeof(e), stdout);
 	return posix_error(ferror(stdout), "fwrite");
 }
@@ -562,9 +562,9 @@ OSErr encode_file(char *filename, int format, short include_comment,
 	/* Populate each descriptor in memory before writing them out. */
 
 	short entry = 0;
-	short entries = 5 + (comment != NULL ? 1 : 0)
-	                  + (format == kAppleSingleMagic ? 1 : 0 )
-	                  + (include_posixname ? 1 : 0);
+	short entries = 5 + (comment != NULL)
+	                  + (format == kAppleSingleMagic)
+	                  + (include_posixname != 0);
 
 	des[entry].offset = sizeof(asHdr) + entries * sizeof(asEntryDesc);
 	if (include_posixname) {
@@ -765,7 +765,7 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
 		}
 
 		// allocate space for next read plus possible null terminator
-		i = ((m + (rchunk + 1 > mchunk ? rchunk + 1 : mchunk) +
+		i = ((m + ((rchunk + 1 > mchunk) ? rchunk + 1 : mchunk) +
 		      mchunk - 1) / mchunk) * mchunk;
 		if (i != *n) {
 			*lineptr = (char*)realloc(*lineptr, i);
@@ -821,7 +821,7 @@ int output_hex(FILE *f, size_t n)
 	}
 	int err = 0;
 	do {
-		size_t bin_chunk = n > BIN_BUFFER_SIZE ? BIN_BUFFER_SIZE : n;
+		size_t bin_chunk = (n > BIN_BUFFER_SIZE) ? BIN_BUFFER_SIZE : n;
 		size_t i = fread(bin_buf, 1, bin_chunk, f);
 		if (i < bin_chunk) {
 			if (feof(f)) {
@@ -870,7 +870,7 @@ out:
 
 int output_raw(FILE *f, char *buf, unsigned buf_sz, size_t n)
 {
-	size_t chunk = n > buf_sz ? buf_sz : n;
+	size_t chunk = (n > buf_sz) ? buf_sz : n;
 	while (n) {
 		if (n < chunk)
 			chunk = n;
@@ -897,7 +897,8 @@ int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 	MD5_CTX c;
 	MD5_Init(&c);
 	UInt64 md[2];
-	size_t chunk = n > buf_sz ? buf_sz : n;
+	size_t chunk = (n > buf_sz) ? buf_sz : n;
+
 	while (n) {
 		if (n < chunk) chunk = n;
 		size_t r = fread(buf, 1, chunk, f);
@@ -921,7 +922,8 @@ int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 
 int discard(FILE *f, char *buf, unsigned buf_sz, size_t n)
 {
-	size_t chunk = n > buf_sz ? buf_sz : n;
+	size_t chunk = (n > buf_sz) ? buf_sz : n;
+
 	while (n) {
 		if (n < chunk) chunk = n;
 		size_t r = fread(buf, 1, chunk, f);
@@ -1082,6 +1084,7 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 						err = output_digest(f, buf, WRITE_BUFFER_SIZE, length);
 						break;
 					}
+					// fall through
 				default:
 					if (verbose > 0)
 						err = output_hex(f, length);
@@ -1090,7 +1093,6 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 				}
 			} else if (entry_id == id) {
 				err = output_raw(f, buf, WRITE_BUFFER_SIZE, length);
-				if (err) goto out2;
 			} else
 				err = discard(f, buf, WRITE_BUFFER_SIZE, length);
 
@@ -1100,6 +1102,7 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 			n--;
 		} else {
 			UInt32 gap = offset - pos;
+
 			if (list_only && verbose > 0)
 				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
@@ -1308,6 +1311,7 @@ int main(int argc, char * argv[])
 				char *buf = NULL;
 				size_t n;
 				ssize_t len;
+
 				while ((len = getdelim(&buf, &n, null_sep ? '\0' : '\n',
 				                       stdin)) != -1) {
 					buf[len - 1] = '\0';
@@ -1331,6 +1335,7 @@ int main(int argc, char * argv[])
 #endif // ENABLE_ENCODING
 		{
 			int err;
+
 			do {
 				err = decode_file(stdin, list_only, id, verbose, null_sep ? '\0' : '\n');
 				report_and_reset_error("stdin");
