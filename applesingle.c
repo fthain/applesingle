@@ -150,10 +150,10 @@ enum { kASMacInfoLocked = 0x01, kASMacInfoProtected = 0x02 };
 
 /* Some error handling routines. */
 
-char *err_msg = NULL;
-char err_msg_buf[255];
+static char *err_msg = NULL;
+static char err_msg_buf[255];
 
-inline int posix_error3(int e, char *fmt, char *m)
+static inline int posix_error3(int e, char *fmt, char *m)
 {
 	if (e == 0)
 		return 0;
@@ -162,12 +162,12 @@ inline int posix_error3(int e, char *fmt, char *m)
 	return e;
 }
 
-inline int posix_error(int e, char *m)
+static inline int posix_error(int e, char *m)
 {
 	return posix_error3(e, "%s: %s", m);
 }
 
-void report_and_reset_error(char *m)
+static void report_and_reset_error(char *m)
 {
 	if (err_msg != NULL) {
 		fprintf(stderr, "%s: %s\n", m, err_msg);
@@ -177,7 +177,7 @@ void report_and_reset_error(char *m)
 
 #ifdef ENABLE_ENCODING
 
-inline OSErr carbon_error(OSErr e, char *m)
+static inline OSErr carbon_error(OSErr e, char *m)
 {
 	if (e == 0)
 		return 0;
@@ -191,7 +191,7 @@ inline OSErr carbon_error(OSErr e, char *m)
  * variable, and also do the conversion.
  */
 
-int utcdatetime_to_AS(UTCDateTime *utcdt)
+static int utcdatetime_to_AS(UTCDateTime *utcdt)
 {
 	unsigned int rounding = utcdt->fraction >> 15;
 	unsigned long long t = ((unsigned long long)utcdt->highSeconds << 32) +
@@ -216,7 +216,7 @@ int utcdatetime_to_AS(UTCDateTime *utcdt)
  * Adapted from Apple's MoreDesktopMgr.c sample.
  */
 
-OSErr GetDesktopFileName(short vRefNum, Str255 desktopName)
+static OSErr GetDesktopFileName(short vRefNum, Str255 desktopName)
 {
 	OSErr error;
 	HParamBlockRec pb;
@@ -242,7 +242,7 @@ OSErr GetDesktopFileName(short vRefNum, Str255 desktopName)
 	return error;
 }
 
-OSErr GetVolumeInfoNoName(ConstStr255Param pathname, short vRefNum, HParmBlkPtr pb)
+static OSErr GetVolumeInfoNoName(ConstStr255Param pathname, short vRefNum, HParmBlkPtr pb)
 {
 	Str255 tempPathname;
 	OSErr error;
@@ -267,7 +267,7 @@ OSErr GetVolumeInfoNoName(ConstStr255Param pathname, short vRefNum, HParmBlkPtr 
 	return error;
 }
 
-OSErr DetermineVRefNum(ConstStr255Param pathname, short vRefNum, short *realVRefNum)
+static OSErr DetermineVRefNum(ConstStr255Param pathname, short vRefNum, short *realVRefNum)
 {
 	HParamBlockRec pb;
 	OSErr error;
@@ -280,7 +280,7 @@ OSErr DetermineVRefNum(ConstStr255Param pathname, short vRefNum, short *realVRef
 
 enum { kFCMTResType = 'FCMT' };
 
-OSErr GetCommentFromDesktopFile(short vRefNum, ConstStr255Param name, Str255 comment, short commentID)
+static OSErr GetCommentFromDesktopFile(short vRefNum, ConstStr255Param name, Str255 comment, short commentID)
 {
 	OSErr error;
 	short realVRefNum;
@@ -326,7 +326,7 @@ OSErr GetCommentFromDesktopFile(short vRefNum, ConstStr255Param name, Str255 com
 	return error;
 }
 
-OSErr DTGetComment(short vRefNum, long dirID, Str255 name, Str255 comment, short commentID)
+static OSErr DTGetComment(short vRefNum, long dirID, Str255 name, Str255 comment, short commentID)
 {
 	DTPBRec pb;
 	OSErr error;
@@ -362,7 +362,7 @@ OSErr DTGetComment(short vRefNum, long dirID, Str255 name, Str255 comment, short
 
 /* A routine to output a given fork. */
 
-OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
+static OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
 {
 	SInt16 forkRefNum;
 	OSErr err = FSOpenFork(ref, forkName->length, forkName->unicode,
@@ -397,7 +397,7 @@ OSErr dump_fork(UInt64 *pos, FSRef *ref, HFSUniStr255 *forkName)
 
 /* Output some nulls. */
 
-int dump_padding(UInt64 *pos, size_t n)
+static int dump_padding(UInt64 *pos, size_t n)
 {
 	int err;
 	char *buf = calloc(1, n);
@@ -414,7 +414,7 @@ int dump_padding(UInt64 *pos, size_t n)
 
 /* Output the POSIX name entry. */
 
-int dump_posix_name(UInt64 *pos, char *p)
+static int dump_posix_name(UInt64 *pos, char *p)
 {
 	*pos += fwrite(p, 1, strlen(p), stdout);
 	return posix_error(ferror(stdout), "fwrite");
@@ -423,7 +423,7 @@ int dump_posix_name(UInt64 *pos, char *p)
 
 /* Output the comment entry. */
 
-int dump_comment(UInt64 *pos, Str255 c)
+static int dump_comment(UInt64 *pos, Str255 c)
 {
 	*pos += fwrite(&c[1], 1, (size_t)c[0], stdout);
 	return posix_error(ferror(stdout), "fwrite");
@@ -432,7 +432,7 @@ int dump_comment(UInt64 *pos, Str255 c)
 
 /* Output the name entry. */
 
-int dump_name(UInt64 *pos, FSSpec *s)
+static int dump_name(UInt64 *pos, FSSpec *s)
 {
 	*pos += fwrite(&s->name[1], 1, (size_t)s->name[0], stdout);
 	return posix_error(ferror(stdout), "fwrite");
@@ -441,7 +441,7 @@ int dump_name(UInt64 *pos, FSSpec *s)
 
 /* Output the Mac info entry. */
 
-int dump_mac_info(UInt64 *pos, FSCatalogInfo *ci)
+static int dump_mac_info(UInt64 *pos, FSCatalogInfo *ci)
 {
 	asMacInfoEntry e = 0;
 	e |= (ci->nodeFlags & kFSNodeLockedMask) ? kASMacInfoLocked : 0;
@@ -453,7 +453,7 @@ int dump_mac_info(UInt64 *pos, FSCatalogInfo *ci)
 
 /* Output the file dates entry. */
 
-int dump_file_dates(UInt64 *pos, FSCatalogInfo *ci, short quash_atime)
+static int dump_file_dates(UInt64 *pos, FSCatalogInfo *ci, short quash_atime)
 {
 	asDatesEntry e;
 	e.creation = htobe32(utcdatetime_to_AS(&ci->createDate));
@@ -468,7 +468,7 @@ int dump_file_dates(UInt64 *pos, FSCatalogInfo *ci, short quash_atime)
 
 /* Output the file info entry. */
 
-int dump_file_info(UInt64 *pos, FSCatalogInfo *ci)
+static int dump_file_info(UInt64 *pos, FSCatalogInfo *ci)
 {
 	*pos += fwrite(&ci->finderInfo, 1, sizeof(ci->finderInfo), stdout);
 	int err = ferror(stdout);
@@ -480,7 +480,7 @@ int dump_file_info(UInt64 *pos, FSCatalogInfo *ci)
 
 /* Output a descriptor. */
 
-int dump_descriptors(UInt64 *pos, asEntryDesc *p)
+static int dump_descriptors(UInt64 *pos, asEntryDesc *p)
 {
 	while (p->entry_id) {
 		asEntryDesc d;
@@ -498,7 +498,7 @@ int dump_descriptors(UInt64 *pos, asEntryDesc *p)
 
 /* Output the file header. */
 
-int dump_header(UInt64 *pos, int format, short entries)
+static int dump_header(UInt64 *pos, int format, short entries)
 {
 	asHdr h;
 	h.magic = htobe32(format);
@@ -514,7 +514,7 @@ int dump_header(UInt64 *pos, int format, short entries)
  * with or without its comment entry.
  */
 
-OSErr encode_file(char *filename, int format, short include_comment,
+static OSErr encode_file(char *filename, int format, short include_comment,
                   short include_posixname, short quash_atime)
 {
 	FSRef ref;
@@ -704,7 +704,7 @@ OSErr encode_file(char *filename, int format, short include_comment,
 
 	err = 0;
 
-out:
+ out:
 	if (comment)
 		free(comment);
 	return err;
@@ -713,7 +713,7 @@ out:
 
 /* Retrieve a record from a file, given a seperator character. */
 
-ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
+static ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
 {
 	char *p;                    // reads stored here
 	size_t const rchunk = 1;    // number of bytes to read
@@ -780,7 +780,7 @@ ssize_t getdelim(char **lineptr, size_t *n, int delim, FILE *stream)
 
 /* Qsort comparison routine for sorting descriptors by offset. */
 
-int compare_desc_offset(const void * a, const void * b)
+static int compare_desc_offset(const void * a, const void * b)
 {
 	UInt32 ao = be32toh(((asEntryDesc*)a)->offset);
 	UInt32 bo = be32toh(((asEntryDesc*)b)->offset);
@@ -805,7 +805,7 @@ int compare_desc_offset(const void * a, const void * b)
 #define HEX_BUFFER_SIZE  (LINES_PER_BUFFER * HEX_LINE_CHARS)
 #define BIN_BUFFER_SIZE  (LINES_PER_BUFFER * BIN_LINE_BYTES)
 
-int output_hex(FILE *f, size_t n)
+static int output_hex(FILE *f, size_t n)
 {
 	char digits[] = "0123456789abcdef";
 	unsigned char *bin_buf = malloc(BIN_BUFFER_SIZE);
@@ -861,7 +861,7 @@ int output_hex(FILE *f, size_t n)
 			posix_error(err = ferror(stdout), "fwrite");
 		n -= i;
 	} while (err == 0 && n > 0);
-out:
+ out:
 	free(hex_buf);
 	free(bin_buf);
 	return err;
@@ -870,7 +870,7 @@ out:
 
 /* Copy some bytes to stdout. */
 
-int output_raw(FILE *f, char *buf, unsigned buf_sz, size_t n)
+static int output_raw(FILE *f, char *buf, unsigned buf_sz, size_t n)
 {
 	size_t chunk = (n > buf_sz) ? buf_sz : n;
 	while (n) {
@@ -894,7 +894,7 @@ int output_raw(FILE *f, char *buf, unsigned buf_sz, size_t n)
 
 /* Output a message digest. */
 
-int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
+static int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 {
 	MD5_CTX c;
 	MD5_Init(&c);
@@ -922,7 +922,7 @@ int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 
 /* Throw away some input. */
 
-int discard(FILE *f, char *buf, unsigned buf_sz, size_t n)
+static int discard(FILE *f, char *buf, unsigned buf_sz, size_t n)
 {
 	size_t chunk = (n > buf_sz) ? buf_sz : n;
 
@@ -944,7 +944,7 @@ int discard(FILE *f, char *buf, unsigned buf_sz, size_t n)
 
 /* Output the name of an entry ID. */
 
-void output_entry_id(UInt32 id)
+static void output_entry_id(UInt32 id)
 {
 	switch(id) {
 	case AS_DATA:
@@ -979,7 +979,7 @@ void output_entry_id(UInt32 id)
 
 /* Output the filename seperator character. */
 
-int output_sep(char sep)
+static int output_sep(char sep)
 {
 	if (!fwrite(&sep, 1, 1, stdout))
 		return posix_error(ferror(stdout), "fwrite");
@@ -991,7 +991,7 @@ int output_sep(char sep)
 
 /* Routine to decode an AppleDouble or AppleSingle stream. */
 
-int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
+static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 {
 	int err = 0;
 	asHdr h;
@@ -1123,9 +1123,9 @@ int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 		fprintf(stderr, "POSIX name was not the first entry (position %llu)\n", pos);
 	}
 
-out2:
+ out2:
 	free(buf);
-out1:
+ out1:
 	free(descriptors);
 	return err;
 }
@@ -1133,7 +1133,7 @@ out1:
 
 /* "Key=value,..." option splitting routine. */
 
-char *parse_kv_pairs(char *p, char **k, char**v)
+static char *parse_kv_pairs(char *p, char **k, char**v)
 {
 	while (*p == ',' || *p == '=')
 		++p;
