@@ -821,7 +821,9 @@ int output_hex(FILE *f, size_t n)
 	}
 	int err = 0;
 	do {
-		size_t bin_chunk = (n > BIN_BUFFER_SIZE) ? BIN_BUFFER_SIZE : n;
+		size_t bin_chunk = n;
+		if (bin_chunk > BIN_BUFFER_SIZE)
+			bin_chunk = BIN_BUFFER_SIZE;
 		size_t i = fread(bin_buf, 1, bin_chunk, f);
 		if (i < bin_chunk) {
 			if (feof(f)) {
@@ -846,7 +848,7 @@ int output_hex(FILE *f, size_t n)
 		if (i < 4) {
 			/* add a '\n' */
 			hex_chunk = 2 * i + 1;
-		} if (i % 4 == 0) {
+		} else if (i % 4 == 0) {
 			/* change the last seperator to a '\n' */
 			hex_chunk = ((i * 2) / 8) * 9;
 			h--;
