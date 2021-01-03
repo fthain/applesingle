@@ -915,7 +915,7 @@ static int output_digest(FILE *f, char *buf, unsigned buf_sz, size_t n)
 		n -= r;
 	}
 	MD5_Final((void*)md, &c);
-	printf("%016llx%016llx (md5)\n", md[0], md[1]);
+	printf("%016lx%016lx (md5)\n", md[0], md[1]);
 	return 0;
 }
 
@@ -1055,7 +1055,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 		UInt32 offset = be32toh(d->offset);
 
 		if (pos > (long long unsigned)offset) {
-			fprintf(stderr, "Bad descriptor offset %u at %llu\n", (unsigned)offset, pos);
+			fprintf(stderr, "Bad descriptor offset %u at %lu\n", (unsigned)offset, pos);
 			d++;
 			n--;
 		} else if (pos == (long long unsigned)offset) {
@@ -1067,7 +1067,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 
 			if (list_only) {
 				if (verbose > 0) {
-					printf("Entry: position %llu, ", pos);
+					printf("Entry: position %lu, ", pos);
 					output_entry_id(entry_id);
 				}
 				switch (entry_id) {
@@ -1106,7 +1106,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 			UInt32 gap = offset - pos;
 
 			if (list_only && verbose > 0)
-				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
+				printf("Misc.: %u byte gap at %lu\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
 			if (err) goto out2;
 			pos += gap;
@@ -1117,10 +1117,10 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 	case 0:
 		break;
 	case -1:
-		fprintf(stderr, "No POSIX name entry (position %llu)\n", pos);
+		fprintf(stderr, "No POSIX name entry (position %lu)\n", pos);
 		break;
 	default:
-		fprintf(stderr, "POSIX name was not the first entry (position %llu)\n", pos);
+		fprintf(stderr, "POSIX name was not the first entry (position %lu)\n", pos);
 	}
 
  out2:
@@ -1278,7 +1278,7 @@ int main(int argc, char * argv[])
 "Encoding of files is not supported on this platform.\n"
 "\n"
 #endif
-, me, me, me, me, me);
+, me, me, me);
 		rc = 3;
 	} else {
 		rc = 0;
