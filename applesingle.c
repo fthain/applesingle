@@ -7,8 +7,8 @@ Build cmd for Mac OS 10.4:
   gcc -DHAVE_DESKTOP_MANAGER -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
 Build cmd for later releases (e.g. with openssl installed under /usr/local):
   cc -m32 -Wno-deprecated-declarations -O2 -framework Carbon -lcrypto applesingle.c -o applesingle
-Build cmd for Linux/x86:
-  cc -O2 -lcrypto applesingle.c -o applesingle
+Build cmd for Linux:
+  cc -O2 applesingle.c -lcrypto -o applesingle
 
 Copyright (c) 2006, 2009, 2011, 2016, 2019 Finn Thain
 fthain@telegraphics.com.au
