@@ -1274,11 +1274,13 @@ int main(int argc, char * argv[])
 "extension to the format as is the POSIX filename entry. They may or may not\n"
 "cause other tools to explode. For more information, refer to \"AppleSingle/\n"
 "AppleDouble Formats for Foreign Files Developer's Note\", Apple 1990.\n"
+, me, me, me, me, me
 #else
 "Encoding of files is not supported on this platform.\n"
 "\n"
+, me, me, me
 #endif
-, me, me, me, me, me);
+		);
 		rc = 3;
 	} else {
 		rc = 0;
