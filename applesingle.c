@@ -64,6 +64,7 @@ Notes:
 2011-04-03 Fix data fork too big error for AppleSingle encoding.
 2016-08-08 Add HAVE_DESKTOP_MANAGER macro to fix build on recent OS releases.
 2019-11-23 Add support for non-Mac (e.g. Linux) hosts.
+2021-01-05 Minor changes to try to support 64-bit Linux hosts.
 */
 
 
@@ -93,6 +94,11 @@ typedef uint32_t UInt32;
 typedef uint64_t UInt64;
 #endif
 
+#ifdef __LP64__
+#define UINT64_FMT "lu"
+#else
+#define UINT64_FMT "llu"
+#endif
 
 /* AppleSingle file header and AppleDouble "header file" header. */
 struct asHdr {
@@ -645,7 +651,7 @@ static OSErr encode_file(char *filename, int format, short include_comment,
 
 		/* sanity check */
 		if (pos != (unsigned long long)cur_des->offset) {
-//			fprintf(stderr, "pos %llu offset %lu\n", pos, (unsigned long)cur_des->offset); 
+//			fprintf(stderr, "pos %"UINT64_FMT" offset %lu\n", pos, (unsigned long)cur_des->offset);
 			fprintf(stderr, "Bad position/offset in encode_file()!\n");
 			err = EIO;
 			goto out;
@@ -696,7 +702,7 @@ static OSErr encode_file(char *filename, int format, short include_comment,
 
 	/* sanity check */
 	if (pos != final_pos) {
-//		fprintf(stderr, "pos %llu final_pos %llu\n", pos, final_pos);
+//		fprintf(stderr, "pos %"UINT64_FMT" final_pos %"UINT64_FMT"\n", pos, final_pos);
 		fprintf(stderr, "Bad position/final position in encode_file()!\n");
 		err = EIO;
 		goto out;
@@ -1055,7 +1061,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 		UInt32 offset = be32toh(d->offset);
 
 		if (pos > (long long unsigned)offset) {
-			fprintf(stderr, "Bad descriptor offset %u at %llu\n", (unsigned)offset, pos);
+			fprintf(stderr, "Bad descriptor offset %u at %"UINT64_FMT"\n", (unsigned)offset, pos);
 			d++;
 			n--;
 		} else if (pos == (long long unsigned)offset) {
@@ -1067,7 +1073,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 
 			if (list_only) {
 				if (verbose > 0) {
-					printf("Entry: position %llu, ", pos);
+					printf("Entry: position %"UINT64_FMT", ", pos);
 					output_entry_id(entry_id);
 				}
 				switch (entry_id) {
@@ -1106,7 +1112,7 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 			UInt32 gap = offset - pos;
 
 			if (list_only && verbose > 0)
-				printf("Misc.: %u byte gap at %llu\n", (unsigned)gap, pos);
+				printf("Misc.: %u byte gap at %"UINT64_FMT"\n", (unsigned)gap, pos);
 			err = discard(f, buf, WRITE_BUFFER_SIZE, gap);
 			if (err) goto out2;
 			pos += gap;
@@ -1117,10 +1123,10 @@ static int decode_file(FILE *f, int list_only, UInt32 id, int verbose, char sep)
 	case 0:
 		break;
 	case -1:
-		fprintf(stderr, "No POSIX name entry (position %llu)\n", pos);
+		fprintf(stderr, "No POSIX name entry (position %"UINT64_FMT")\n", pos);
 		break;
 	default:
-		fprintf(stderr, "POSIX name was not the first entry (position %llu)\n", pos);
+		fprintf(stderr, "POSIX name was not the first entry (position %"UINT64_FMT")\n", pos);
 	}
 
  out2:
