@@ -54,6 +54,9 @@ Notes:
 * The format doesn't accomodate directories, but could probably be extended.
 * Apple now ships their own "applesingle" command, which means this one should
   be renamed.
+* This program doesn't yet have full support for the AppleSingle/AppleDouble
+  implementation in A/UX. Namely, icons, home filesystem, and native file info
+  entries aren't implemented. See "A/UX Toolbox: Macintosh ROM Interface".
 
 2006-06-19 First cut.
 2009-09-01 Clean up code style. Rewrite help text. Rework argument parsing and
