@@ -11,7 +11,6 @@ Build cmd for Linux:
   cc -O2 applesingle.c -lcrypto -o applesingle
 
 Copyright (c) 2006, 2009, 2011, 2016, 2019 Finn Thain
-fthain@telegraphics.com.au
 
 Portions of Desktop Manager support code copyright (c) 1992-2002 Apple Computer, Inc.
 
